@@ -1,19 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import {
-  Users, Building2, Target, DollarSign, Calendar,
+  Users, Building2, Target, DollarSign, Calendar, AlertCircle,
 } from "lucide-react";
-import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Cell,
-} from "recharts";
 import { KpiCard } from "@/components/shared/kpi-card";
 import { Timeline } from "@/components/shared/timeline";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CardSkeleton } from "@/components/shared/loading-skeleton";
+import { Button } from "@/components/ui/button";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { formatLabel } from "@/lib/constants";
+
+const DashboardCharts = dynamic(() => import("@/components/dashboard/dashboard-charts"), {
+  ssr: false,
+  loading: () => (
+    <div className="grid gap-6 lg:grid-cols-2">
+      <CardSkeleton />
+      <CardSkeleton />
+    </div>
+  ),
+});
 
 interface DashboardData {
   stats: {
@@ -45,18 +53,31 @@ interface DashboardData {
   }>;
 }
 
-const CHART_COLORS = ["#2563EB", "#10B981", "#F59E0B", "#8B5CF6"];
-const FUNNEL_COLORS = ["#2563EB", "#3B82F6", "#60A5FA", "#93C5FD", "#10B981"];
-
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadDashboard = () => {
+    setLoading(true);
+    setError(null);
+    fetch("/api/dashboard")
+      .then(async (r) => {
+        const json = await r.json();
+        if (!r.ok || json.error || !json.stats) {
+          throw new Error(json.error || "Failed to load dashboard data");
+        }
+        setData(json);
+      })
+      .catch((err) => {
+        setData(null);
+        setError(err instanceof Error ? err.message : "Failed to load dashboard data");
+      })
+      .finally(() => setLoading(false));
+  };
 
   useEffect(() => {
-    fetch("/api/dashboard")
-      .then((r) => r.json())
-      .then(setData)
-      .finally(() => setLoading(false));
+    loadDashboard();
   }, []);
 
   if (loading) {
@@ -71,7 +92,22 @@ export default function DashboardPage() {
     );
   }
 
-  if (!data) return null;
+  if (error || !data) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <div className="mb-4 rounded-full bg-destructive/10 p-4 text-destructive">
+          <AlertCircle className="h-8 w-8" />
+        </div>
+        <h2 className="text-lg font-semibold">Dashboard couldn&apos;t load</h2>
+        <p className="mt-2 max-w-md text-sm text-muted-foreground">
+          {error || "Something went wrong while fetching dashboard data."}
+        </p>
+        <Button onClick={loadDashboard} className="mt-4">
+          Try again
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -106,90 +142,14 @@ export default function DashboardPage() {
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Lead Funnel</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={data.funnel} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" />
-                <YAxis
-                  type="category"
-                  dataKey="stage"
-                  width={100}
-                  tickFormatter={(v) => formatLabel(v)}
-                  tick={{ fontSize: 12 }}
-                />
-                <Tooltip
-                  formatter={(value) => [value, "Leads"]}
-                  labelFormatter={(label) => formatLabel(String(label))}
-                />
-                <Bar dataKey="count" radius={[0, 6, 6, 0]}>
-                  {data.funnel.map((_, index) => (
-                    <Cell key={index} fill={FUNNEL_COLORS[index % FUNNEL_COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Revenue Trend</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={280}>
-              <AreaChart data={data.revenueChart}>
-                <defs>
-                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#2563EB" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-                <Tooltip formatter={(value) => [formatCurrency(Number(value)), "Revenue"]} />
-                <Area
-                  type="monotone"
-                  dataKey="revenue"
-                  stroke="#2563EB"
-                  strokeWidth={2}
-                  fill="url(#colorRevenue)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
+      <DashboardCharts
+        funnel={data.funnel}
+        revenueChart={data.revenueChart}
+        activityChart={data.activityChart}
+      />
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle>Activity Breakdown</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={data.activityChart}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="type" tickFormatter={(v) => formatLabel(v)} tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip labelFormatter={(label) => formatLabel(String(label))} />
-                <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                  {data.activityChart.map((_, index) => (
-                    <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
+        <Card className="lg:col-span-1">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Calendar className="h-5 w-5 text-primary" />
@@ -222,7 +182,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Recent Activities</CardTitle>
           </CardHeader>
