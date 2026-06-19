@@ -3,7 +3,15 @@ import { NextResponse } from "next/server";
 
 export default auth((req) => {
   const isLoggedIn = !!req.auth;
-  const isLoginPage = req.nextUrl.pathname === "/login";
+  const { pathname } = req.nextUrl;
+  const isLoginPage = pathname === "/login";
+  const isRoot = pathname === "/";
+
+  if (isRoot) {
+    return NextResponse.redirect(
+      new URL(isLoggedIn ? "/dashboard" : "/login", req.nextUrl)
+    );
+  }
 
   if (!isLoggedIn && !isLoginPage) {
     return NextResponse.redirect(new URL("/login", req.nextUrl));

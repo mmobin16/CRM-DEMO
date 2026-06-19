@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const now = new Date();
@@ -111,6 +114,8 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Dashboard API error:", error);
-    return NextResponse.json({ error: "Failed to fetch dashboard data" }, { status: 500 });
+    const message =
+      error instanceof Error ? error.message : "Failed to fetch dashboard data";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
